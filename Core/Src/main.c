@@ -55,10 +55,10 @@ typedef struct{
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define GEAR 200
+#define GEAR 75/9
 
-#define true 1;
-#define false 0;
+#define true 1
+#define false 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -87,9 +87,8 @@ uint8_t RxData[8] = {};
 uint8_t TxData_motor[8] = {};
 uint8_t RxData_motor[8] = {};
 
-motor robomas[2] = {
+motor robomas[1] = {
 		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 volatile uint8_t is_Right = 0, is_Left = 0, is_Up = 0, is_Down = 0, is_Circle = 0, is_Square = 0, is_Triangle = 0;
@@ -102,7 +101,8 @@ volatile float kp = 200, ki = 0, kd = 0;
 float max_sum_pos_err = 10000;
 float max_output_val = 10000;
 
-volatile float purpose[] = {};
+volatile float purpose[1] = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -239,7 +239,7 @@ void FDCAN_motor_RxTxSettings(void) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if (&htim6 == htim) {
-		for (int i = 0; i < 2; i++){
+		for (int i = 0; i < 1; i++){
 			robomas[i].hensa = robomas[i].trgVel - robomas[i].actVel;
 			if (robomas[i].hensa >= 1000) robomas[i].hensa = 1000;
 			else if (robomas[i].hensa <= -1000) robomas[i].hensa = -1000;
@@ -266,7 +266,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	}
 
 	if (&htim7 == htim) {
-		for (int i = 0; i < 2; i++) {
+		for (int i = 0; i < 1; i++) {
 			robomas[i].motor_spd = (float)robomas[i].actVel / 60.0;
 
 			robomas[i].diff_pro=robomas[i].actangle - robomas[i].p_actangle;
@@ -362,18 +362,23 @@ int main(void)
   printf("can_motor_start\r\n");
   FDCAN_RxTxSettings();//Initialize fdcan1
   printf("can start\r\n");
+  HAL_TIM_Base_Start_IT(&htim6);
+  HAL_TIM_Base_Start_IT(&htim7);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  purpose[0] = 0;
+  HAL_Delay(2000);
   while (1)
   {
-	  if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan3, &TxHeader_motor, TxData_motor) != HAL_OK){
+	  if (HAL_OK != HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan3, &TxHeader_motor, TxData_motor)){
 		  printf("addmassage is error\r\n");
 		  Error_Handler();
 	  }
-
+	  printf("%d\r\n", TxData_motor[0]);
 	  HAL_Delay(10);
+	  purpose[0] = M_PI_4;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
