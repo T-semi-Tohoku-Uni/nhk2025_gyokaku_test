@@ -103,6 +103,7 @@ float max_output_val = 10000;
 
 volatile float purpose[1] = {0};
 
+int8_t vel_arg = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -139,7 +140,6 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 }
 
 void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs){
-	int16_t CANID = 0;
 	if (RESET != (RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE)) {
 
 	        /* Retrieve Rx messages from RX FIFO0 */
@@ -149,8 +149,9 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 			Error_Handler();
 		}
 
-		if (CANID == RxHeader.Identifier) {
-
+		if (0x300 == RxHeader.Identifier) {
+			vel_arg = (int8_t)RxData[3];
+			purpose[0] += (vel_arg/100);
 		}
 	}
 }
@@ -263,6 +264,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			TxData_motor[i*2+1] = (uint8_t)((robomas[i].cu) & 0xff);
 			robomas[i].p_actVel = robomas[i].actVel;
 		}
+		if (HAL_OK != HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan3, &TxHeader_motor, TxData_motor)){
+			printf("addmassage is error\r\n");
+			Error_Handler();
+		}
 	}
 
 	if (&htim7 == htim) {
@@ -290,7 +295,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].motor_spd = diff / 8192.0 / dt;
 
 
-			robomas[i].motor_pos_ref = -1*purpose[i]/M_PI/GEAR;
+			robomas[i].motor_pos_ref = -1*purpose[i]/M_PI/2*GEAR*36;
 
 			float p_gain = (robomas[i].motor_pos_ref - robomas[i].motor_pos) * kp;
 			robomas[i].pos_err = robomas[i].motor_pos_ref - robomas[i].motor_pos;
@@ -301,10 +306,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].last_pos_err = robomas[i].pos_err;
 			if(robomas[i].sum_pos_err >= max_sum_pos_err){
 				robomas[i].sum_pos_err = max_sum_pos_err;
-					}
-					else if(robomas[i].sum_pos_err <= -max_sum_pos_err){
-						robomas[i].sum_pos_err = -max_sum_pos_err;
-					}
+			}
+			else if(robomas[i].sum_pos_err <= -max_sum_pos_err){
+				robomas[i].sum_pos_err = -max_sum_pos_err;
+			}
 			float i_gain = robomas[i].sum_pos_err * ki;
 
 			float d_gain = robomas[i].motor_spd * kd;
@@ -364,21 +369,19 @@ int main(void)
   printf("can start\r\n");
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
+  /*
+  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIOx, GPIO_Pin)){
+  	  robomas[0].trgVel = 100*36;
+  }
+  */
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  purpose[0] = 0;
-  HAL_Delay(2000);
   while (1)
   {
-	  if (HAL_OK != HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan3, &TxHeader_motor, TxData_motor)){
-		  printf("addmassage is error\r\n");
-		  Error_Handler();
-	  }
-	  printf("%d\r\n", TxData_motor[0]);
+	  printf("%f\r\n", purpose[0]);
 	  HAL_Delay(10);
-	  purpose[0] = M_PI_4;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -684,6 +687,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  printf("error\r\n");
   while (1)
   {
   }
