@@ -151,7 +151,7 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 
 		if (0x300 == RxHeader.Identifier) {
 			vel_arg = (int8_t)RxData[3];
-			purpose[0] += (vel_arg/100);
+			purpose[0] -= (vel_arg/100);
 		}
 	}
 }
