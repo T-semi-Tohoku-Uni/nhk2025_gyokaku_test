@@ -70,6 +70,7 @@ typedef struct{
 FDCAN_HandleTypeDef hfdcan1;
 FDCAN_HandleTypeDef hfdcan3;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
 
@@ -114,6 +115,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_FDCAN3_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM7_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -151,7 +153,10 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 
 		if (0x300 == RxHeader.Identifier) {
 			vel_arg = (int8_t)RxData[3];
-			purpose[0] -= (vel_arg/100);
+			if (vel_arg < 10 && vel_arg > -10) {
+				vel_arg = 0;
+			}
+			purpose[0] -= ((float)vel_arg/10000);
 		}
 	}
 }
@@ -295,7 +300,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].motor_spd = diff / 8192.0 / dt;
 
 
-			robomas[i].motor_pos_ref = -1*purpose[i]/M_PI/2*GEAR*36;
+			robomas[i].motor_pos_ref = purpose[i]/M_PI/2*GEAR*36;
 
 			float p_gain = (robomas[i].motor_pos_ref - robomas[i].motor_pos) * kp;
 			robomas[i].pos_err = robomas[i].motor_pos_ref - robomas[i].motor_pos;
@@ -315,6 +320,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			float d_gain = robomas[i].motor_spd * kd;
 
 			robomas[i].trgVel = p_gain + i_gain + d_gain;
+		}
+	}
+	if (&htim2 == htim) {
+		if (GPIO_PIN_SET == HAL_GPIO_ReadPin(limit_sw_GPIO_Port, limit_sw_Pin)){
+			robomas[0].motor_pos = 0;
 		}
 	}
 }
@@ -361,6 +371,7 @@ int main(void)
   MX_FDCAN3_Init();
   MX_TIM6_Init();
   MX_TIM7_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   printf("start\r\n");
   FDCAN_motor_RxTxSettings();//Initialize fdcan3
@@ -369,11 +380,12 @@ int main(void)
   printf("can start\r\n");
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
-  /*
-  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(GPIOx, GPIO_Pin)){
-  	  robomas[0].trgVel = 100*36;
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw_GPIO_Port, limit_sw_Pin)){
+  	  robomas[0].trgVel = -100*36;
   }
-  */
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -522,6 +534,52 @@ static void MX_FDCAN3_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 9;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 7999;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_RESET;
+  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM6 Initialization Function
   * @param None
   * @retval None
@@ -662,6 +720,12 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Board_LED_GPIO_Port, Board_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : limit_sw_Pin */
+  GPIO_InitStruct.Pin = limit_sw_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(limit_sw_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Board_LED_Pin */
   GPIO_InitStruct.Pin = Board_LED_Pin;
