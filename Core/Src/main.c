@@ -88,8 +88,9 @@ uint8_t RxData[8] = {};
 uint8_t TxData_motor[8] = {};
 uint8_t RxData_motor[8] = {};
 
-motor robomas[1] = {
+motor robomas[2] = {
 		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 volatile uint8_t is_Right = 0, is_Left = 0, is_Up = 0, is_Down = 0, is_Circle = 0, is_Square = 0, is_Triangle = 0;
@@ -157,6 +158,45 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 				vel_arg = 0;
 			}
 			purpose[0] -= ((float)vel_arg/10000);
+			if ((RxData[6] & 0x40) == 0x40){
+				is_Right = true;
+			}
+			else {
+				is_Right = false;
+			}
+			if ((RxData[6] & 0x20) == 0x20){
+				is_Left = true;
+			}
+			else {
+				is_Left = false;
+			}
+			if ((RxData[6] & 0x10) == 0x10){
+				is_Up = true;
+			}
+			else {
+				is_Up = false;
+			}
+			if ((RxData[6] & 0x8) == 0x8){
+				is_Down = true;
+			}
+			else {
+				is_Down = false;
+			}
+			if ((RxData[6] & 0x4) == 0x4){
+				is_Circle = true;
+			}
+			else {
+				is_Circle = false;
+			}
+		}
+
+		if (0x301 == RxHeader.Identifier) {
+			if ((int8_t)RxData[1] == 1) {
+				is_Right = false;
+				is_Left = false;
+				is_Up = false;
+				is_Down = false;
+			}
 		}
 	}
 }
@@ -245,7 +285,7 @@ void FDCAN_motor_RxTxSettings(void) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if (&htim6 == htim) {
-		for (int i = 0; i < 1; i++){
+		for (int i = 0; i < 2; i++){
 			robomas[i].hensa = robomas[i].trgVel - robomas[i].actVel;
 			if (robomas[i].hensa >= 1000) robomas[i].hensa = 1000;
 			else if (robomas[i].hensa <= -1000) robomas[i].hensa = -1000;
@@ -392,6 +432,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (true == is_Circle) {
+		  robomas[1].trgVel = 36 * 60;
+		  printf("ok\r\n");
+	  }
+	  else {
+		  robomas[1].trgVel = 0;
+	  }
 	  printf("%f\r\n", purpose[0]);
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
