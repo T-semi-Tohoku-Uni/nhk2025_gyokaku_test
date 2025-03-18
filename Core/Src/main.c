@@ -88,9 +88,10 @@ uint8_t RxData[8] = {};
 uint8_t TxData_motor[8] = {};
 uint8_t RxData_motor[8] = {};
 
-motor robomas[2] = {
+motor robomas[3] = {
 		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x203, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 volatile uint8_t is_Right = 0, is_Left = 0, is_Up = 0, is_Down = 0, is_Circle = 0, is_Square = 0, is_Triangle = 0;
@@ -103,9 +104,10 @@ volatile float kp = 200, ki = 0, kd = 0;
 float max_sum_pos_err = 10000;
 float max_output_val = 10000;
 
-volatile float purpose[1] = {0};
+volatile float purpose[2] = {0, 0};
 
 int8_t vel_arg = 0;
+int8_t vel_arg_s = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -158,6 +160,11 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 				vel_arg = 0;
 			}
 			purpose[0] -= ((float)vel_arg/10000);
+			vel_arg_s = (int8_t)RxData[2];
+			if (vel_arg_s < 10 && vel_arg_s > -10) {
+				vel_arg_s = 0;
+			}
+			purpose[1] -= ((float)vel_arg_s/100000);
 			if ((RxData[6] & 0x40) == 0x40){
 				is_Right = true;
 			}
@@ -187,6 +194,12 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 			}
 			else {
 				is_Circle = false;
+			}
+			if ((RxData[7] & 0x40) == 0x40){
+				is_Cross = true;
+			}
+			else {
+				is_Cross = false;
 			}
 		}
 
@@ -285,7 +298,7 @@ void FDCAN_motor_RxTxSettings(void) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if (&htim6 == htim) {
-		for (int i = 0; i < 2; i++){
+		for (int i = 0; i < 3; i++){
 			robomas[i].hensa = robomas[i].trgVel - robomas[i].actVel;
 			if (robomas[i].hensa >= 1000) robomas[i].hensa = 1000;
 			else if (robomas[i].hensa <= -1000) robomas[i].hensa = -1000;
@@ -316,7 +329,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	}
 
 	if (&htim7 == htim) {
-		for (int i = 0; i < 1; i++) {
+		for (int i = 0; i < 2; i++) {
 			robomas[i].motor_spd = (float)robomas[i].actVel / 60.0;
 
 			robomas[i].diff_pro=robomas[i].actangle - robomas[i].p_actangle;
@@ -432,14 +445,24 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if (purpose[0] < 0) {
+		  purpose[0] = 0;
+	  }
+	  else if (purpose[0] > (M_PI/180*85)) {
+		  purpose[0] = (M_PI/180*85);
+	  }
 	  if (true == is_Circle) {
-		  robomas[1].trgVel = 36 * 60;
+		  robomas[2].trgVel = 36 * 60;
 		  printf("ok\r\n");
 	  }
+	  else if (true == is_Cross) {
+		  robomas[2].trgVel = -36 * 60;
+		  printf("ok\r\n");
+	  }//purpose[i]/M_PI/2*GEAR*36
 	  else {
-		  robomas[1].trgVel = 0;
+		  robomas[2].trgVel = 0;
 	  }
-	  printf("%f\r\n", purpose[0]);
+	  printf("%f %f\r\n", -robomas[0].motor_pos*M_PI*2/GEAR/36, purpose[0]/M_PI*180);
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
