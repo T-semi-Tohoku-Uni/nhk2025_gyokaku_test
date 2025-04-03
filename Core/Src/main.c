@@ -51,6 +51,9 @@ typedef struct{
 	volatile float hensa;
 	volatile float ind;
 }motor;
+
+//1:gyukaku2:houikaku3:caych4:souten
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -70,7 +73,6 @@ typedef struct{
 FDCAN_HandleTypeDef hfdcan1;
 FDCAN_HandleTypeDef hfdcan3;
 
-TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim6;
@@ -90,10 +92,11 @@ uint8_t RxData[8] = {};
 uint8_t TxData_motor[8] = {};
 uint8_t RxData_motor[8] = {};
 
-motor robomas[3] = {
+motor robomas[4] = {
 		{0x201, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0x202, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		{0x203, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		{0x204, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 volatile uint8_t is_Right = 0, is_Left = 0, is_Up = 0, is_Down = 0, is_Circle = 0, is_Square = 0, is_Triangle = 0;
@@ -106,7 +109,7 @@ volatile float kp = 200, ki = 0, kd = 0;
 float max_sum_pos_err = 10000;
 float max_output_val = 10000;
 
-volatile float purpose[2] = {0, 0};
+volatile float purpose[4] = {0, 0, 0, 0};
 
 int8_t vel_arg = 0;
 int8_t vel_arg_s = 0;
@@ -130,7 +133,6 @@ static void MX_TIM6_Init(void);
 static void MX_TIM7_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM5_Init(void);
-static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -318,7 +320,7 @@ void FDCAN_motor_RxTxSettings(void) {
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if (&htim6 == htim) {
-		for (int i = 0; i < 3; i++){
+		for (int i = 0; i < 4; i++){
 			robomas[i].hensa = robomas[i].trgVel - robomas[i].actVel;
 			if (robomas[i].hensa >= 1000) robomas[i].hensa = 1000;
 			else if (robomas[i].hensa <= -1000) robomas[i].hensa = -1000;
@@ -350,7 +352,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	}
 
 	if (&htim7 == htim) {
-		for (int i = 0; i < 2; i++) {
+		robomas[0].motor_pos_ref = purpose[0]/M_PI/2*GEAR*36;
+		robomas[2].motor_pos_ref = purpose[2]/M_PI/2*36;
+		for (int i = 0; i < 3; i++) {
 			robomas[i].motor_spd = (float)robomas[i].actVel / 60.0;
 
 			robomas[i].diff_pro=robomas[i].actangle - robomas[i].p_actangle;
@@ -373,8 +377,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[i].motor_pos += diff/8192.0;
 			robomas[i].motor_spd = diff / 8192.0 / dt;
 
-
-			robomas[i].motor_pos_ref = purpose[i]/M_PI/2*GEAR*36;
 
 			float p_gain = (robomas[i].motor_pos_ref - robomas[i].motor_pos) * kp;
 			robomas[i].pos_err = robomas[i].motor_pos_ref - robomas[i].motor_pos;
@@ -399,6 +401,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if (&htim2 == htim) {
 		if (GPIO_PIN_SET == HAL_GPIO_ReadPin(limit_sw_GPIO_Port, limit_sw_Pin)){
 			robomas[0].motor_pos = 0;
+		}
+		if (GPIO_PIN_SET == HAL_GPIO_ReadPin(limit_sw1_GPIO_Port, limit_sw1_Pin)){
+			robomas[2].motor_pos = 0;
 		}
 	}
 }
@@ -447,7 +452,6 @@ int main(void)
   MX_TIM7_Init();
   MX_TIM2_Init();
   MX_TIM5_Init();
-  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   printf("start\r\n");
   FDCAN_motor_RxTxSettings();//Initialize fdcan3
@@ -457,11 +461,16 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
   HAL_TIM_Base_Start_IT(&htim2);
-  HAL_TIM_PWM_Start_IT(&htim1,TIM_CHANNEL_1);
+  //HAL_TIM_PWM_Start_IT(&htim1,TIM_CHANNEL_1);
 
   while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw_GPIO_Port, limit_sw_Pin)){
   	  robomas[0].trgVel = -100*36;
   }
+  //printf("ok\r\n");
+  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw1_GPIO_Port, limit_sw1_Pin)){
+    	  robomas[2].trgVel = 100*36;
+    }
+  //printf("ok\r\n");
   //__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,58);
   Servo = 60;
   /* USER CODE END 2 */
@@ -473,24 +482,35 @@ int main(void)
 	  if (purpose[0] < 0) {
 		  purpose[0] = 0;
 	  }
-	  else if (purpose[0] > (M_PI/180*85)) {
-		  purpose[0] = (M_PI/180*85);
+	  else if (purpose[0] > (M_PI/180*90)) {
+		  purpose[0] = (M_PI/180*90);
 	  }
+
+	  if (purpose[2] > 0) {
+		  purpose[2] = 0;
+	  }
+	  else if (purpose[2] < -(M_PI/180*90)) {
+		  purpose[2] = -(M_PI/180*90);
+	  }
+
 	  if (true == is_Circle) {
-		  robomas[2].trgVel = 36 * 60;
-		  printf("ok\r\n");
+		  robomas[3].trgVel = -36 * 60;
+		  //printf("ok\r\n");
 	  }
 	  else if (true == is_Cross) {
-		  robomas[2].trgVel = -36 * 60;
-		  printf("ok\r\n");
+		  robomas[3].trgVel = 36 * 60;
+		  //printf("ok\r\n");
 	  }//purpose[i]/M_PI/2*GEAR*36
 	  else {
 		  robomas[2].trgVel = 0;
 	  }
 	  if(true == is_Up){
-		  Servo += 1;
+		  purpose[2] += 0.01;
+		  //printf("up\r\n");
 	  }else if(true == is_Down){
-		  Servo -= 1;
+		  purpose[2] -= 0.01;
+		  //printf("down\r\n");
+
 	  }
 	  if(Servo < 25){
 		  Servo = 25;
@@ -500,9 +520,10 @@ int main(void)
 	  Servo_angle = ((float)Servo - 60.0)*180.0/95.0;
 	  float tan_angle =tan((90-Servo_angle)*3.14/180);
 	  distance = 0.64 * tan_angle;
-	  __HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,Servo);
-	  printf("%d,%f,%f\r\n",Servo,Servo_angle,distance);
+	  //__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,Servo);
+	  //printf("%d,%f,%f\r\n",Servo,Servo_angle,distance);
 	  //printf("%f %f\r\n", -robomas[0].motor_pos*M_PI*2/GEAR/36, purpose[0]/M_PI*180);
+	  printf("%f %f\r\n", -robomas[2].motor_pos*M_PI*2/36, purpose[2]/M_PI*180);
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
@@ -640,78 +661,6 @@ static void MX_FDCAN3_Init(void)
   /* USER CODE BEGIN FDCAN3_Init 2 */
 
   /* USER CODE END FDCAN3_Init 2 */
-
-}
-
-/**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM1_Init(void)
-{
-
-  /* USER CODE BEGIN TIM1_Init 0 */
-
-  /* USER CODE END TIM1_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
-
-  /* USER CODE BEGIN TIM1_Init 1 */
-
-  /* USER CODE END TIM1_Init 1 */
-  htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 1599;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 999;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.BreakFilter = 0;
-  sBreakDeadTimeConfig.BreakAFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
-  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
-  sBreakDeadTimeConfig.Break2Filter = 0;
-  sBreakDeadTimeConfig.Break2AFMode = TIM_BREAK_AFMODE_INPUT;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM1_Init 2 */
-
-  /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -952,6 +901,12 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Board_LED_GPIO_Port, Board_LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : limit_sw1_Pin */
+  GPIO_InitStruct.Pin = limit_sw1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(limit_sw1_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : limit_sw_Pin */
   GPIO_InitStruct.Pin = limit_sw_Pin;
