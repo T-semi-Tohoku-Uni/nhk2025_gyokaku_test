@@ -110,6 +110,8 @@ float max_sum_pos_err = 10000;
 float max_output_val = 10000;
 
 volatile float purpose[4] = {0, 0, 0, 0};
+volatile float purpose_r[4] = {0,0,0,0};
+volatile float purpose_v[4] = {0,0,0,0};
 
 int8_t vel_arg = 0;
 int8_t vel_arg_s = 0;
@@ -121,6 +123,24 @@ float distance;
 #define hight 0.64;
 
 float target_angle = 0;
+
+int dribblestate = 0;
+
+uint8_t buffer[1] = {};
+uint8_t txbuffer;
+uint8_t size = 1;
+int8_t datapos=0;
+uint8_t data[11];
+
+float gyoukaku = 0;
+float houuikaku = 0;
+int uart_state = 1;
+
+int souten_state = 0;
+uint16_t souten_time = 0;
+int souten_taiki = 0;
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -173,12 +193,12 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 			if (vel_arg < 10 && vel_arg > -10) {
 				vel_arg = 0;
 			}
-			purpose[0] -= ((float)vel_arg/10000);
+			purpose_r[0] -= ((float)vel_arg/10000);
 			vel_arg_s = (int8_t)RxData[2];
 			if (vel_arg_s < 10 && vel_arg_s > -10) {
 				vel_arg_s = 0;
 			}
-			purpose[1] -= ((float)vel_arg_s/100000);
+			purpose_r[1] -= ((float)vel_arg_s/100000);
 			if ((RxData[6] & 0x40) == 0x40){
 				is_Right = true;
 			}
@@ -193,7 +213,7 @@ void HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo1ITs)
 			}
 			if ((RxData[6] & 0x10) == 0x10){
 				is_Up = true;
-				printf("ok");
+				//printf("ok");
 			}
 			else {
 				is_Up = false;
@@ -353,7 +373,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 	if (&htim7 == htim) {
 		robomas[0].motor_pos_ref = purpose[0]/M_PI/2*GEAR*36;
-		robomas[2].motor_pos_ref = purpose[2]/M_PI/2*36;
+//		robomas[1].motor_pos_ref = purpose[1]/M_PI/2*36*65/9;
+//		robomas[2].motor_pos_ref = purpose[2]/M_PI/2*36;
 		for (int i = 0; i < 3; i++) {
 			robomas[i].motor_spd = (float)robomas[i].actVel / 60.0;
 
@@ -403,11 +424,97 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			robomas[0].motor_pos = 0;
 		}
 		if (GPIO_PIN_SET == HAL_GPIO_ReadPin(limit_sw1_GPIO_Port, limit_sw1_Pin)){
-			robomas[2].motor_pos = 0;
+			souten_state = 0;
+			souten_taiki = 1;
 		}
+		if (GPIO_PIN_SET == HAL_GPIO_ReadPin(limit_houi_GPIO_Port, limit_houi_Pin)){
+			robomas[1].motor_pos = -M_PI/180*20;
+		}
+//		if(souten_time == 1000){
+//			souten_time = 0;
+//			if(souten_taiki == 1){
+//				souten_taiki = 0;
+//				if(souten_state == 0){
+//					robomas[3].trgVel = 0;
+//				}else if(souten_state == 1){
+//					robomas[3].trgVel = -36 * 60;
+//				}else if(souten_state == -1){
+//					robomas[3].trgVel = 36 * 60;
+//				}
+//			}
+//		}else{
+//			souten_time++;
+//		}
+
 	}
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+
+	if(buffer[0] == 13){
+		printf("ok\r\n");
+		if(data[0] == 103){
+			//float gyoukaku = 0;
+			gyoukaku = 0;
+			int syousuu = 0;
+			for(int i = 1;i<datapos;i++){
+				if(data[i] == 46){
+					syousuu = datapos - i -1;
+				}else{
+					gyoukaku = gyoukaku*10 + data[i] - 48;
+				}
+			}
+			for(int i = 0;i<syousuu;i++){
+				gyoukaku = gyoukaku/10;
+			}
+			printf("moto:%f\r\n",gyoukaku);
+			gyoukaku = gyoukaku*M_PI/180;
+			printf("gyoukaku:%.4f\r\n",gyoukaku);
+		}else if(data[0] == 104){
+			//float houuikaku = 0;
+			houuikaku = 0;
+			int syousuu = 0;
+			for(int i = 1;i<datapos;i++){
+				if(data[i] == 46){
+					syousuu = datapos - i -1;
+				}else{
+					houuikaku = houuikaku*10 + data[i] - 48;
+				}
+			}
+			for(int i = 0;i<syousuu;i++){
+				houuikaku = houuikaku/10;
+			}
+			printf("moto:%f\r\n",houuikaku);
+			houuikaku = houuikaku*M_PI/180;
+			printf("houuikaku:%.4f\r\n",houuikaku);
+		}else if(data[0] == 117){
+			uart_state = -uart_state;
+		}else if(data[0] == 115){
+			souten_state = 1;
+			souten_taiki = 1;
+		}else if(data[0] == 116){
+			souten_state = -1;
+			souten_taiki = 1;
+		}
+		for(int i =0;i < datapos;i++){
+			//printf("%d\r\n",data[i]);
+			printf("i:%d,data:%d\r\n",i,data[i]);
+
+			data[i] = 0;
+		}
+		datapos = -1;
+	}else{
+		data[datapos] = buffer[0];
+		datapos++;
+	}
+	HAL_UART_Receive_IT(&huart2, buffer, size);
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart){
+	printf("uart_error\r\n");
+	HAL_UART_Abort(huart);
+	HAL_UART_Receive_IT(&huart2, buffer, size);
+}
 
 int _write(int file, char *ptr, int len)
 {
@@ -461,24 +568,39 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim7);
   HAL_TIM_Base_Start_IT(&htim2);
+  HAL_UART_Receive_IT(&huart2, buffer, size);
   //HAL_TIM_PWM_Start_IT(&htim1,TIM_CHANNEL_1);
 
   while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw_GPIO_Port, limit_sw_Pin)){
   	  robomas[0].trgVel = -100*36;
   }
   //printf("ok\r\n");
-  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw1_GPIO_Port, limit_sw1_Pin)){
-    	  robomas[2].trgVel = 100*36;
-    }
+//  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_sw1_GPIO_Port, limit_sw1_Pin)){
+//    	  robomas[2].trgVel = -100*36;
+//  }
+//  while (GPIO_PIN_RESET == HAL_GPIO_ReadPin(limit_houi_GPIO_Port, limit_houi_Pin)){
+//      	  robomas[1].trgVel = -100*36;
+//  }
+//  robomas[1].motor_pos = -M_PI/180*20;
+//  purpose[1] = 0
+
   //printf("ok\r\n");
   //__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,58);
-  Servo = 60;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if(uart_state == 1){
+		  purpose[0] = purpose_r[0]*1 + purpose[0]*0;
+		  purpose[1] = purpose_r[1]*1 + purpose[1]*0;
+
+
+	  }else if(uart_state == -1){
+		  purpose[0] = gyoukaku*1 + purpose[0]*0;
+		  purpose[1] = houuikaku*1 + purpose[1]*0;
+	  }
 	  if (purpose[0] < 0) {
 		  purpose[0] = 0;
 	  }
@@ -486,24 +608,28 @@ int main(void)
 		  purpose[0] = (M_PI/180*90);
 	  }
 
-	  if (purpose[2] > 0) {
+	  if (purpose[2] < 0) {
 		  purpose[2] = 0;
 	  }
-	  else if (purpose[2] < -(M_PI/180*90)) {
-		  purpose[2] = -(M_PI/180*90);
+	  else if (purpose[2] > (M_PI/180*90)) {
+		  purpose[2] = (M_PI/180*90);
 	  }
-
+	  if (purpose[1] > (M_PI/180*20)) {
+		  purpose[1] = (M_PI/180*20);
+	  }else if (purpose[1] < -(M_PI/180*20)) {
+		  purpose[2] = -(M_PI/180*20);
+	  }
 	  if (true == is_Circle) {
 		  robomas[3].trgVel = -36 * 60;
-		  //printf("ok\r\n");
+		  printf("ok\r\n");
 	  }
 	  else if (true == is_Cross) {
 		  robomas[3].trgVel = 36 * 60;
 		  //printf("ok\r\n");
-	  }//purpose[i]/M_PI/2*GEAR*36
-	  else {
-		  robomas[2].trgVel = 0;
+	  }else {
+		  robomas[3].trgVel = 0;
 	  }
+
 	  if(true == is_Up){
 		  purpose[2] += 0.01;
 		  //printf("up\r\n");
@@ -522,8 +648,16 @@ int main(void)
 	  distance = 0.64 * tan_angle;
 	  //__HAL_TIM_SET_COMPARE(&htim1,TIM_CHANNEL_1,Servo);
 	  //printf("%d,%f,%f\r\n",Servo,Servo_angle,distance);
-	  //printf("%f %f\r\n", -robomas[0].motor_pos*M_PI*2/GEAR/36, purpose[0]/M_PI*180);
-	  printf("%f %f\r\n", -robomas[2].motor_pos*M_PI*2/36, purpose[2]/M_PI*180);
+	  printf("%f %f\r\n", -robomas[0].motor_pos*M_PI*2/GEAR/36, purpose[0]/M_PI*180);
+	  //printf("%f %f\r\n", -robomas[2].motor_pos*M_PI*2/36, purpose[2]/M_PI*180);
+	  //printf("g:%f,s:%f\r\n",purpose[0],purpose[1]);
+	  //printf("state:%d,time:%d\r\n",souten_state,souten_time);
+	  if(dribblestate == 1){
+		  purpose[0] = (M_PI/180*70);
+		  HAL_Delay(10000);
+		  dribblestate = 0;
+	  }
+
 	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
@@ -722,19 +856,24 @@ static void MX_TIM5_Init(void)
 
   /* USER CODE END TIM5_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM5_Init 1 */
 
   /* USER CODE END TIM5_Init 1 */
   htim5.Instance = TIM5;
-  htim5.Init.Prescaler = 1599;
+  htim5.Init.Prescaler = 0;
   htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim5.Init.Period = 999;
+  htim5.Init.Period = 4294967295;
   htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim5) != HAL_OK)
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -744,18 +883,9 @@ static void MX_TIM5_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim5, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM5_Init 2 */
 
   /* USER CODE END TIM5_Init 2 */
-  HAL_TIM_MspPostInit(&htim5);
 
 }
 
@@ -902,17 +1032,17 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Board_LED_GPIO_Port, Board_LED_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : limit_sw1_Pin */
-  GPIO_InitStruct.Pin = limit_sw1_Pin;
+  /*Configure GPIO pins : limit_sw1_Pin limit_souten_Pin */
+  GPIO_InitStruct.Pin = limit_sw1_Pin|limit_souten_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(limit_sw1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : limit_sw_Pin */
-  GPIO_InitStruct.Pin = limit_sw_Pin;
+  /*Configure GPIO pins : limit_sw_Pin limit_houi_Pin */
+  GPIO_InitStruct.Pin = limit_sw_Pin|limit_houi_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(limit_sw_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : Board_LED_Pin */
   GPIO_InitStruct.Pin = Board_LED_Pin;
